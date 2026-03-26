@@ -23,8 +23,14 @@ function toggleSaveSignal(id) {
 
 // --- CORE FEED LOGIC ---
 function timeSince(dateString) {
+    // Force JS to read the timestamp as UTC by appending 'Z'
+    if (!dateString.endsWith('Z')) dateString += 'Z'; 
+    
     const date = new Date(dateString);
-    const seconds = Math.floor((new Date() - date) / 1000);
+    let seconds = Math.floor((new Date() - date) / 1000);
+    
+    if (seconds < 0) seconds = 1; // Failsafe: if the clocks are off by a few seconds, say "1m ago" instead of negative
+    
     let interval = seconds / 3600;
     if (interval > 24) return Math.floor(interval / 24) + "d ago";
     if (interval >= 1) return Math.floor(interval) + "h ago";
@@ -61,6 +67,7 @@ async function fetchSignals() {
         allSignals = dbSignals.map(signal => ({
             id: signal.id,
             date: timeSince(signal.published_at),
+            headline: signal.headline || "Market Update", // Fallback for old DB entries
             location: signal.location,
             category: signal.category,
             impact: signal.impact,
@@ -100,11 +107,11 @@ function renderFeed(data) {
         const cardHTML = `
             <div class="bg-surface-container-lowest rounded-md p-6 flex flex-col gap-3 shadow-sm border border-outline-variant/10">
                 <div class="flex items-center justify-between border-b border-outline-variant/20 pb-2">
-                    <span class="text-[10px] font-bold tracking-widest text-primary-fixed-dim uppercase">${signal.category}</span>
+                    <span class="text-[10px] font-bold tracking-widest text-primary-fixed-dim uppercase">${signal.category} • ${signal.location}</span>
                     <span class="text-[10px] font-medium text-outline-variant">${signal.date}</span>
                 </div>
                 <div class="flex items-start justify-between gap-2 pt-1">
-                    <h2 class="font-headline text-3xl font-medium leading-none text-primary tracking-tight">${signal.location}</h2>
+                    <h2 class="font-headline text-3xl font-medium leading-none text-primary tracking-tight pr-4">${signal.headline}</h2>
                     <span class="px-2 py-1 rounded-sm text-[10px] font-bold uppercase tracking-widest ${chipBg} ${chipText} flex-shrink-0">${signal.impact}</span>
                 </div>
                 <div class="bg-surface rounded-sm p-4 mt-2 space-y-2 border border-outline-variant/10">
@@ -172,11 +179,9 @@ function switchAppView(view) {
     
     const showFilters = view === 'feed';
     
-    // FIX: Do not touch the parent <aside> to preserve Tailwind's mobile protection (hidden md:flex).
-    // Instead, toggle the visibility of the desktop <ul> and its label directly.
+    // FIX: Toggling internal lists instead of parent <aside> prevents Tailwind mobile overlap bug
     if(filterDesktop) {
         filterDesktop.classList.toggle('hidden', !showFilters);
-        // Hides the "Regional Filters" text above the list
         if(filterDesktop.previousElementSibling) {
             filterDesktop.previousElementSibling.classList.toggle('hidden', !showFilters);
         }
@@ -218,7 +223,7 @@ function switchAppView(view) {
     }
 }
 
-// --- UTILITIES LOGIC (With Safety Checks) ---
+// --- UTILITIES LOGIC ---
 
 function calculateYield() {
     const costEl = document.getElementById('yield-cost');
@@ -362,7 +367,6 @@ if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(err => console.log('PWA Failed:', err)));
 }
 
-// Added fetchCirculars here so they load immediately in the background on startup!
 document.addEventListener('DOMContentLoaded', () => {
     fetchSignals();
     fetchCirculars(); 

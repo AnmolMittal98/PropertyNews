@@ -19,40 +19,40 @@ if not GEMINI_API_KEY:
 
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Highly Targeted Real Estate RSS Feeds
+# THE "WIDER NET": 11 Highly Targeted Feeds
 RSS_FEEDS = [
     {"name": "ET Realty - Residential", "url": "https://realty.economictimes.indiatimes.com/rss/residential"},
     {"name": "ET Realty - Commercial", "url": "https://realty.economictimes.indiatimes.com/rss/commercial"},
     {"name": "ET Realty - Infrastructure", "url": "https://realty.economictimes.indiatimes.com/rss/infrastructure"},
-    {"name": "Hindustan Times - Property", "url": "https://www.hindustantimes.com/feeds/rss/real-estate/rssfeed.xml"}
+    {"name": "Hindustan Times - Property", "url": "https://www.hindustantimes.com/feeds/rss/real-estate/rssfeed.xml"},
+    {"name": "Moneycontrol - Real Estate", "url": "https://www.moneycontrol.com/rss/realestate.xml"},
+    {"name": "Financial Express - Real Estate", "url": "https://www.financialexpress.com/money/real-estate/feed/"},
+    {"name": "Google News - Noida RERA", "url": "https://news.google.com/rss/search?q=noida+rera+real+estate&hl=en-IN&gl=IN&ceid=IN:en"},
+    {"name": "Google News - Dwarka Expressway", "url": "https://news.google.com/rss/search?q=dwarka+expressway+property&hl=en-IN&gl=IN&ceid=IN:en"},
+    {"name": "Google News - Yamuna Expressway", "url": "https://news.google.com/rss/search?q=yamuna+expressway+land+acquisition&hl=en-IN&gl=IN&ceid=IN:en"},
+    {"name": "Google News - Gurgaon Real Estate", "url": "https://news.google.com/rss/search?q=gurgaon+real+estate&hl=en-IN&gl=IN&ceid=IN:en"},
+    {"name": "Google News - Delhi DDA", "url": "https://news.google.com/rss/search?q=dda+delhi+real+estate&hl=en-IN&gl=IN&ceid=IN:en"}
 ]
 
-# UPDATED PROMPT: Now asks for a JSON Array and handles silent dropping of irrelevant news.
 SYSTEM_PROMPT = """
-You are an expert real estate intelligence analyst specializing exclusively in the Delhi NCR property market.
-Analyze the following batch of news articles and extract specific market signals.
+You are an elite real estate intelligence analyst for the Delhi NCR market (Delhi, Noida, Gurgaon, Yamuna Expressway). 
+Analyze this batch of news articles. If an article is NOT about NCR real estate, IGNORE IT completely.
 
-CRITICAL RULES: 
-1. Evaluate EACH article individually.
-2. If an article is NOT about real estate, infrastructure, or zoning WITHIN the Delhi NCR region (Delhi, Noida, Gurgaon, Ghaziabad, Faridabad, etc.), IGNORE IT completely. Do not include it in your output array.
-3. For the articles that ARE relevant, return a JSON array of objects adhering strictly to the schema below.
-
-You must respond ONLY with a valid JSON ARRAY. Do not include markdown formatting like ```json or any conversational text.
-
-Schema for each object in the array:
+For relevant articles, return a JSON array. Follow this strict schema:
 [
     {
-        "batch_id": "Return the exact ID integer provided in the input prompt for this article.",
-        "location": "Extract the specific micro-market in Delhi NCR. BE PRECISE. (e.g., 'Sector 150, Noida', 'Dwarka Expressway, Gurgaon').",
-        "category": "Classify the event into a short label (e.g., 'Metro Extension', 'Zoning Change', 'Policy Shift', 'Commercial Leasing', 'Project Launch').",
-        "impact": "Must be exactly one of: 'Positive', 'Negative', or 'Neutral'.",
-        "summary": "Write exactly 2 conversational, brief sentences summarizing how this event affects local property prices. Write in a 'WhatsApp style' suitable for fast scanning. Avoid emojis."
+        "batch_id": "Exact ID integer provided in the input.",
+        "headline": "A punchy, 4-6 word financial broadsheet headline (e.g., 'DDA Offers 25% Flat Discount' or 'Accenture Leases 1.65L SqFt').",
+        "location": "Hyper-local market (e.g., 'Sector 150, Noida', 'SPR, Gurgaon').",
+        "category": "Use one: 'Infrastructure', 'Policy Shift', 'Commercial', 'Residential', 'Land Acquisition'.",
+        "impact": "Must be exactly: 'Positive', 'Negative', or 'Neutral'.",
+        "summary": "Write exactly 2 crisp, financial-broadsheet style sentences. Sentence 1: The core fact (who/what/where). Sentence 2: The direct impact on local property yields, rental demand, or capital appreciation. NO fluff. NO emojis. Be clinical and authoritative."
     }
 ]
 """
 
 def is_relevant_for_ncr(text: str) -> bool:
-    """Zero-Cost Python Pre-Filter to save Gemini API Quota."""
+    """Zero-Cost Python Pre-Filter."""
     text = text.lower()
     target_keywords = [
         'delhi', 'ncr', 'new delhi', 'noida', 'gurgaon', 'gurugram', 
@@ -67,11 +67,9 @@ def is_relevant_for_ncr(text: str) -> bool:
     return any(keyword in text for keyword in target_keywords)
 
 def process_batch_with_gemini(batch: list) -> list:
-    """Sends multiple articles to Gemini in a single prompt to save 80% on costs."""
     if not batch:
         return []
 
-    # Construct the batch text
     articles_text = "Articles to Analyze:\n\n"
     for item in batch:
         articles_text += f"--- ARTICLE ID: {item['batch_id']} ---\n"
@@ -79,27 +77,30 @@ def process_batch_with_gemini(batch: list) -> list:
         articles_text += f"Text: {item['text']}\n\n"
 
     try:
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        # OPTIMIZATION: Switched to flash-lite for extreme efficiency
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
         response = model.generate_content(f"{SYSTEM_PROMPT}\n{articles_text}")
         
         response_text = response.text.strip()
         
-        # Clean markdown if Gemini accidentally adds it
         if response_text.startswith("```json"):
             response_text = response_text[7:]
+        elif response_text.startswith("```"):
+            response_text = response_text[3:]
+            
         if response_text.endswith("```"):
             response_text = response_text[:-3]
             
         results = json.loads(response_text.strip())
         
         if not isinstance(results, list):
-            logging.error("Gemini did not return a JSON array as requested.")
+            logging.error("Gemini did not return a JSON array.")
             return []
             
         return results
         
-    except json.JSONDecodeError:
-        logging.error(f"Failed to decode JSON from Gemini. Response was: {response_text}")
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to decode JSON from Gemini. Error: {e}")
         return []
     except Exception as e:
         logging.error(f"Gemini API Error: {str(e)}")
@@ -108,13 +109,27 @@ def process_batch_with_gemini(batch: list) -> list:
 def fetch_and_process_feeds():
     db: Session = SessionLocal()
     
+    # THE 15-DAY HORIZON: Perfect balance of volume and recency
+    MAX_DAYS_OLD = 15 
+    
     for feed_source in RSS_FEEDS:
         logging.info(f"Fetching RSS feed from: {feed_source['name']}")
-        feed = feedparser.parse(feed_source['url'])
+        try:
+            feed = feedparser.parse(feed_source['url'])
+        except Exception as e:
+            logging.error(f"Failed to parse feed {feed_source['name']}: {e}")
+            continue
         
         current_batch = []
         
-        for entry in feed.entries[:15]: # Process top 15 from each feed
+        for entry in feed.entries[:25]: # Checking top 25 per feed to ensure we hit the 15-day limit
+            # 0. Time Horizon Filter
+            if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                pub_date = datetime.fromtimestamp(mktime(entry.published_parsed))
+                days_old = (datetime.utcnow() - pub_date).days
+                if days_old > MAX_DAYS_OLD:
+                    continue 
+            
             # 1. Skip if already in DB
             exists = db.query(MarketSignal).filter(MarketSignal.source_url == entry.link).first()
             if exists:
@@ -123,13 +138,13 @@ def fetch_and_process_feeds():
             article_text = entry.summary if hasattr(entry, 'summary') else entry.title
             full_text_to_check = f"{entry.title} {article_text}"
             
-            # 2. Python Pre-filter (Costs 0 Quota)
+            # 2. Python Pre-filter
             if not is_relevant_for_ncr(full_text_to_check):
                 continue
             
             # 3. Add to batch
             current_batch.append({
-                "batch_id": len(current_batch), # 0, 1, 2, 3, 4
+                "batch_id": len(current_batch),
                 "title": entry.title,
                 "text": article_text,
                 "url": entry.link,
@@ -137,48 +152,45 @@ def fetch_and_process_feeds():
                 "published_parsed": entry.published_parsed if hasattr(entry, 'published_parsed') else None
             })
             
-            # 4. If batch hits 5, process it to save costs
-            if len(current_batch) == 5:
-                logging.info(f"Processing full batch of 5 articles...")
+            # 4. OPTIMIZATION: Process batch of 25 to protect Free Tier RPD
+            if len(current_batch) == 25:
+                logging.info("Processing massive batch of 25 articles...")
                 process_and_save_batch(db, current_batch)
-                current_batch = [] # Reset batch
-                time.sleep(15) # Safety pause for API limits
+                current_batch = []
+                time.sleep(25) # Keeps you safe under the 5 Requests/Min Free Tier limit
                 
-        # Process any remaining articles in the feed that didn't make a full 5
+        # Process remaining
         if len(current_batch) > 0:
             logging.info(f"Processing final batch of {len(current_batch)} articles...")
             process_and_save_batch(db, current_batch)
-            time.sleep(15)
+            time.sleep(25)
 
     db.close()
     logging.info("RSS Feed processing cycle complete.")
 
 def process_and_save_batch(db: Session, batch: list):
-    """Helper function to send the batch and save the results."""
     ai_results = process_batch_with_gemini(batch)
     
     for result in ai_results:
         try:
-            # Match the AI result back to the original article data using the batch_id
             batch_id = int(result.get('batch_id', -1))
             if batch_id < 0 or batch_id >= len(batch):
                 continue
                 
             original_article = batch[batch_id]
             
-            # Format impact
             impact_enum = ImpactLevel.NEUTRAL
             impact_str = result.get('impact', '').capitalize()
             if impact_str in [item.value for item in ImpactLevel]:
                 impact_enum = ImpactLevel(impact_str)
 
-            # Format Date
             pub_date = datetime.utcnow()
             if original_article['published_parsed']:
                 pub_date = datetime.fromtimestamp(mktime(original_article['published_parsed']))
 
-            # Save to Database
+            # FIX: Properly extract the headline from Gemini's response
             new_signal = MarketSignal(
+                headline=result.get('headline', 'Market Update'), 
                 location=result.get('location', 'Delhi NCR'),
                 category=result.get('category', 'Market Update'),
                 impact=impact_enum,
@@ -189,7 +201,7 @@ def process_and_save_batch(db: Session, batch: list):
             )
             db.add(new_signal)
             db.commit()
-            logging.info(f"🟢 Saved curated signal for: {new_signal.location}")
+            logging.info(f"🟢 Saved curated signal for: {new_signal.headline}")
             
         except Exception as db_error:
             db.rollback()

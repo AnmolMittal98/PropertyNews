@@ -25,6 +25,7 @@ class MarketSignal(Base):
     __tablename__ = "market_signals"
 
     id = Column(Integer, primary_key=True, index=True)
+    headline = Column(String(200), nullable=False, default="Market Update")
     location = Column(String(150), index=True, nullable=False)
     category = Column(String(100), index=True, nullable=False)
     impact = Column(Enum(ImpactLevel), nullable=False, default=ImpactLevel.NEUTRAL)
