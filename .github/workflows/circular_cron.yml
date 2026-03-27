@@ -1,0 +1,30 @@
+name: 5-Day Circular Engine
+
+on:
+  schedule:
+    # 23:30 UTC = 5:00 AM IST, but ONLY every 5th day of the month (1st, 6th, 11th, etc.)
+    - cron: '30 23 */5 * *'
+  workflow_dispatch:
+
+jobs:
+  run-circular-scraper:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.9'
+        
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt        
+        
+    - name: Fetch Government Circulars
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      run: python circular_fetcher.py
