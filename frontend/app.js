@@ -333,7 +333,7 @@ function calculateArea() {
     Object.keys(unitRates).forEach(targetUnit => {
         if (targetUnit !== unit) {
             const converted = baseSqFt / unitRates[targetUnit];
-            const labels = { sqft: 'Sq Feet', gaj: 'Sq Yards', sqm: 'Sq Meters', acre: 'Acres', bigha: 'Bigha (UP)' };
+            const labels = { sqft: 'Sq Feet', gaj: 'Sq Yards or Gaj', sqm: 'Sq Meters', acre: 'Acres', bigha: 'Bigha (UP)' };
             resultsDiv.insertAdjacentHTML('beforeend', `
                 <div class="p-6 border-r border-b border-outline-variant/10 hover:bg-surface-container-low transition-colors group">
                     <label class="font-body text-[10px] font-bold uppercase text-on-surface-variant group-hover:text-primary">${labels[targetUnit]}</label>
