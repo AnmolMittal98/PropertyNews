@@ -120,15 +120,16 @@ def fetch_and_process_feeds():
     db: Session = SessionLocal()
     MAX_DAYS_OLD = 15 
     
+    # NEW: Master list to hold all articles across all feeds before calling Gemini
+    all_pending_articles = []
+    
     for feed_source in RSS_FEEDS:
-        logging.info(f"Fetching RSS feed from: {feed_source['name']}")
+        logging.info(f"Scanning RSS feed: {feed_source['name']}")
         try:
             feed = feedparser.parse(feed_source['url'])
         except Exception as e:
             logging.error(f"Failed to parse feed {feed_source['name']}: {e}")
             continue
-        
-        current_batch = []
         
         for entry in feed.entries[:25]:
             if hasattr(entry, 'published_parsed') and entry.published_parsed:
@@ -147,25 +148,37 @@ def fetch_and_process_feeds():
             if not is_relevant_for_ncr(full_text_to_check):
                 continue
             
-            current_batch.append({
-                "batch_id": len(current_batch),
+            # Add to the master list instead of a local batch
+            all_pending_articles.append({
+                "batch_id": len(all_pending_articles), # ID is now global
                 "title": entry.title,
                 "text": article_text,
                 "url": entry.link,
                 "source_name": feed_source['name'],
                 "published_parsed": entry.published_parsed if hasattr(entry, 'published_parsed') else None
             })
+
+    # Now that we have scanned ALL feeds, we process the master list in tight chunks of 20
+    total_articles = len(all_pending_articles)
+    logging.info(f"Total relevant new articles found across all feeds: {total_articles}")
+    
+    # We only call Gemini if we actually found something
+    if total_articles > 0:
+        chunk_size = 20
+        for i in range(0, total_articles, chunk_size):
+            chunk = all_pending_articles[i:i + chunk_size]
             
-            if len(current_batch) >= 20:
-                logging.info(f"Processing batch of {len(current_batch)} articles...")
-                process_and_save_batch(db, current_batch)
-                current_batch = []
-                time.sleep(20) 
+            # Fix the batch_id for the AI prompt so it starts at 0 for each chunk
+            for idx, item in enumerate(chunk):
+                item['batch_id'] = idx
                 
-        if len(current_batch) > 0:
-            logging.info(f"Processing final batch of {len(current_batch)} articles...")
-            process_and_save_batch(db, current_batch)
-            time.sleep(20)
+            logging.info(f"Sending chunk of {len(chunk)} articles to Gemini...")
+            process_and_save_batch(db, chunk)
+            
+            # Sleep to respect the 10 RPM limit
+            if i + chunk_size < total_articles:
+                logging.info("Sleeping for 15 seconds to respect RPM limits...")
+                time.sleep(15)
 
     db.close()
     logging.info("RSS Feed processing cycle complete.")
